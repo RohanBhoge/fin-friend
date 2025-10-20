@@ -3,7 +3,6 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # --- LangChain & Google Gemini Imports ---
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
