@@ -49,8 +49,7 @@ else:
         f"FAISS index not found. Please run the ingestion notebook first to create '{FAISS_INDEX_PATH}'."
     )
     st.stop()
-
-
+    
 # --- Helper Functions and Prompts ---
 def format_user_data_for_llm(data):
     """Formats the collected user data into a clean, human-readable string."""
