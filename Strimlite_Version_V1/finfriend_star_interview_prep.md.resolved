@@ -1,0 +1,182 @@
+# FinFriend — STAR Method Interview Prep
+
+---
+
+## Situation
+
+- Built **Fin-Friend**, an AI-powered financial health chatbot as a personal project to demonstrate end-to-end **AI/ML + Full-Stack** development skills
+- The app is a conversational guide that conducts a **comprehensive financial health check-up** for salaried individuals in India
+- It gathers income, expenses, goals, investments & debts through a guided chat → generates a personalized financial report → supports follow-up Q&A
+- **Tech stack:** Python, Streamlit, LangChain, Google Gemini API (`gemini-2.5-flash`), FAISS, HuggingFace Sentence Transformers
+- **Live deployed** on Streamlit Community Cloud: [fin-friend.streamlit.app](https://fin-friend-ol9qz4uzxeswhypx5avvza.streamlit.app/)
+
+---
+
+## Task
+
+Build a production-ready **RAG-based (Retrieval-Augmented Generation)** financial chatbot with:
+
+- A curated **knowledge base** from a 70K+ character financial guide document (390 lines covering budgeting, debt, investing — all India-specific)
+- **Conversational data gathering** — multi-step structured questionnaire (13 questions) to collect user financial data
+- **Dynamic RAG pipeline** — query generation → contextual retrieval → grounded report generation
+- **Follow-up Q&A loop** — context-aware conversation with full chat history
+- **Prompt engineering** — detailed persona with guardrails (no financial advice, mandatory disclaimers, empathy for negative savings)
+- Deploy as a **live, publicly accessible** app
+
+---
+
+## Action — Key Technical Points to Highlight
+
+### 1. Architecture: Two-Phase RAG Pipeline
+
+The app operates in **two distinct phases**:
+
+| Phase | What Happens | Where |
+|-------|-------------|-------|
+| **Ingestion (Offline)** | Load [.txt](file:///c:/Programs/01_Projects/Projects/04_FinFriend/requirements.txt) knowledge base → chunk documents → embed with HuggingFace → persist FAISS index | [geminiModel.ipynb](file:///c:/Programs/01_Projects/Projects/04_FinFriend/geminiModel.ipynb) |
+| **Inference (Live)** | Streamlit chatbot → gather data → dynamic RAG → generate report → follow-up Q&A | [app.py](file:///c:/Programs/01_Projects/Projects/04_FinFriend/app.py) |
+
+- Knowledge base: [documents/manageMoney.txt](file:///c:/Programs/01_Projects/Projects/04_FinFriend/documents/manageMoney.txt) — a comprehensive ~70K character Indian financial guide
+- Pre-computed FAISS index stored in `faiss_store_finfriend_gemini/` for instant loading at runtime
+
+---
+
+### 2. RAG Pipeline — The Core Innovation (3 Chained LLM Calls)
+
+This is the most technically interesting part:
+
+**Step 1: Dynamic Query Generation (1st LLM Call)**
+```
+User's financial data → Gemini → "How to manage high credit card debt on low salary"
+```
+Instead of using a static query, the app **generates a targeted search query** from the user's actual data. This ensures the retrieved context is hyper-relevant to that specific user's situation.
+
+**Step 2: Contextual Retrieval (FAISS Similarity Search)**
+```
+Dynamic query → FAISS → Top 3 most relevant document chunks
+```
+Uses `all-MiniLM-L6-v2` (384-dim) embeddings with `k=3` retrieval.
+
+**Step 3: Grounded Report Generation (2nd LLM Call)**
+```
+Persona Instructions + Retrieved Context + User Data → Gemini → Financial Health Report
+```
+The final prompt combines the bot's persona, the retrieved financial guide context, and the user's formatted data.
+
+**Step 4: Follow-up Q&A (Subsequent LLM Calls)**
+```
+Chat History + New Context + Follow-up Question → Gemini → Context-aware Answer
+```
+For each follow-up, the app retrieves **new context** for the new question while maintaining full conversation history.
+
+---
+
+### 3. Knowledge Base & Vector Store
+
+- **Source:** [manageMoney.txt](file:///c:/Programs/01_Projects/Projects/04_FinFriend/documents/manageMoney.txt) — 390-line comprehensive Indian financial guide covering:
+  - 5 Pillars of Personal Finance, SMART Goals, Budgeting Methods (50/30/20, Zero-Based, Envelope)
+  - Emergency Funds, Insurance, Debt Strategies (Snowball vs Avalanche)
+  - Indian Investment instruments (EPF, PPF, NPS, ELSS, SIPs, Index Funds)
+  - Real stories + wisdom from Indian billionaires + r/IndiaInvestments community
+- **Chunking:** `RecursiveCharacterTextSplitter` with `chunk_size=1000`, `chunk_overlap=200` → **112 chunks**
+- **Embedding:** HuggingFace `all-MiniLM-L6-v2` — FREE, local, no API cost
+- **Vector Store:** FAISS (Facebook AI Similarity Search) — pre-computed and persisted for instant loading
+
+---
+
+### 4. Conversational State Machine (Streamlit Session State)
+
+The chatbot follows a **3-Act structure** managed via `st.session_state.step`:
+
+```
+Act I: Data Gathering (13 sequential questions)
+    ↓ step == len(questions)
+Act II: Report Generation (RAG pipeline executes)
+    ↓ step > len(questions)
+Act III: Open-ended Follow-up Q&A Loop
+```
+
+- `st.session_state.messages` — full chat history (list of dicts)
+- `st.session_state.user_data` — collected user income, goals, investments, debts
+- `st.session_state.expenses` — structured expense categories (rent, utilities, groceries, etc.)
+- `st.session_state.step` — controls which phase the chatbot is in
+
+---
+
+### 5. Prompt Engineering & Safety Guardrails
+
+Created a detailed **persona + instruction set** ([Prompt.md](file:///c:/Programs/01_Projects/Projects/04_FinFriend/Prompt.md), 181 lines):
+
+- **Persona:** Empathetic, non-judgmental financial guide for India
+- **Core Directives (Constitution):**
+  - ❌ Never give direct financial advice — frame everything as "educational information"
+  - ✅ Mandatory disclaimer on every response
+  - ✅ Prioritize user's stated non-negotiable expenses
+  - ✅ Handle incomplete data gracefully ("A close estimate is all we need")
+  - ✅ Empathy for negative savings — reframe "Available for Savings" → "Monthly Shortfall"
+  - ✅ India-specific context (PPF, EPF, NPS, tax laws)
+  - ✅ Calculation rules — 10% MF projection allowed with disclaimer, no crypto/stock predictions
+
+---
+
+### 6. Model Caching & Performance
+
+```python
+@st.cache_resource
+def load_models():
+    embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
+    return embedding_model, llm
+```
+
+- `@st.cache_resource` ensures models are loaded **once** across all sessions
+- FAISS index loaded from pre-computed files — no re-indexing at runtime
+- API key stored securely via [.env](file:///c:/Programs/01_Projects/Projects/04_FinFriend/.env) file + `python-dotenv`, accessed via `os.getenv("GOOGLE_API_KEY")`
+
+---
+
+### 7. Data Formatting Utility
+
+```python
+def format_user_data_for_llm(data):
+```
+- Converts nested user data dict into a clean, markdown-formatted string for the LLM prompt
+- Handles both flat values and nested dicts (like `expenses_structured`)
+- Uses `key.replace("_", " ").title()` for human-readable labels
+
+---
+
+### 8. Deployment
+
+- Deployed on **Streamlit Community Cloud** (serverless)
+- Pre-computed FAISS index committed to repo for zero-setup deployment
+- `GOOGLE_API_KEY` managed via Streamlit Secrets dashboard
+- **Dependencies:** `streamlit`, `langchain`, `langchain-google-genai`, `langchain-community`, `sentence-transformers`, `faiss-cpu`, `python-dotenv`, `torch`
+
+---
+
+## Result
+
+- ✅ **Live deployed** production app on Streamlit Community Cloud
+- ✅ Covers a **full financial health check-up flow**: guided data gathering → personalized RAG-grounded report → follow-up Q&A
+- ✅ Integrated **3-step dynamic RAG pipeline** (query generation → retrieval → grounded generation)
+- ✅ **112-chunk knowledge base** from a comprehensive Indian financial guide with FAISS vector search
+- ✅ Demonstrates: **LangChain orchestration, RAG architecture, prompt engineering, vector databases, Gemini API integration, Streamlit stateful apps**
+- ✅ Clean separation: ingestion notebook ([geminiModel.ipynb](file:///c:/Programs/01_Projects/Projects/04_FinFriend/geminiModel.ipynb)) vs live app ([app.py](file:///c:/Programs/01_Projects/Projects/04_FinFriend/app.py)) vs prompt design ([Prompt.md](file:///c:/Programs/01_Projects/Projects/04_FinFriend/Prompt.md))
+
+---
+
+## Quick Q&A Prep
+
+| Likely Question | Key Answer |
+|----------------|------------|
+| **Why RAG instead of fine-tuning?** | RAG lets me ground responses in a specific financial guide without expensive fine-tuning. The knowledge base can be updated by just swapping the [.txt](file:///c:/Programs/01_Projects/Projects/04_FinFriend/requirements.txt) file — no retraining needed. |
+| **Why HuggingFace embeddings instead of Gemini embeddings?** | `all-MiniLM-L6-v2` is FREE, runs locally, and produces high-quality 384-dim embeddings. Avoids API cost for the embedding step — only the LLM calls use the paid Gemini API. |
+| **Why FAISS over Pinecone/ChromaDB?** | FAISS is lightweight, fast, runs locally with no cloud dependency, and perfect for a single-document knowledge base. No need for a managed vector DB at this scale. |
+| **How does the dynamic query generation help?** | Instead of embedding the user's raw data for retrieval (which would be a poor semantic match), I use an LLM to generate a focused search query. E.g., for a user with high debt, it generates "how to manage high-interest debt on low salary" — much better retrieval quality. |
+| **How do you handle auth/API key security?** | API key stored in [.env](file:///c:/Programs/01_Projects/Projects/04_FinFriend/.env) file (local) and Streamlit Secrets (production). Never committed to Git. Accessed via `os.getenv()`. |
+| **What's the biggest challenge?** | Designing the RAG pipeline so the 3 chained LLM calls work cohesively — the dynamic query had to be specific enough for good retrieval but not so narrow that it missed relevant context. Also managing `useEffect`-equivalent state transitions in Streamlit's re-run model. |
+| **Why Streamlit over React?** | Streamlit is purpose-built for data/AI apps — built-in chat UI, session state, caching, and one-click deployment. For an LLM chatbot, it's the fastest path to production without building a separate frontend. |
+| **How does the follow-up Q&A work?** | Each follow-up question triggers a new FAISS retrieval for fresh context, combined with the full chat history. This lets the bot answer new topics while remembering the entire conversation. |
+| **What's the knowledge base?** | A 70K+ character, 390-line comprehensive financial guide covering Indian-specific topics: 50/30/20 rule, debt avalanche/snowball, EPF/PPF/NPS, SIPs, and real advice from r/IndiaInvestments. |
+| **How would you scale this?** | Add PDF/multi-doc support, switch to a managed vector DB (Pinecone), add user authentication to save sessions, integrate data visualization (Altair charts) for the financial report. |
