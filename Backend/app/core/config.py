@@ -1,10 +1,10 @@
-"""
-Application configuration loaded from environment variables using Pydantic BaseSettings.
-"""
-
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import List
+
+# Calculate project root (assumes this file is in backend/app/core/config.py)
+PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 
 
 class Settings(BaseSettings):
@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     # ── RAG / FAISS ───────────────────────────────────────────────────────
-    FAISS_INDEX_PATH: str = "./faiss_index"
-    DOCUMENTS_PATH: str = "./documents"
+    FAISS_INDEX_PATH: str = str(PROJECT_ROOT / "faiss_index")
+    DOCUMENTS_PATH: str = str(PROJECT_ROOT / "documents")
 
     @property
     def cors_origins_list(self) -> List[str]:
