@@ -13,7 +13,7 @@ import google.generativeai as genai
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,9 +35,9 @@ async def build_faiss_index() -> None:
     """
     global _faiss_retriever, _embedding_model
 
-    logger.info("🔄 Initializing embedding model...")
-    _embedding_model = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    _embedding_model = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        google_api_key=settings.GEMINI_API_KEY
     )
 
     index_path = settings.FAISS_INDEX_PATH
